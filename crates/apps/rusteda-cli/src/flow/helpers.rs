@@ -1659,7 +1659,7 @@ fn validate(c: &Context, out: &Path) -> Res<()> {
         let expected = if matches!(*op, "electrical" | "hold") {
             "estimated_rc"
         } else {
-            "ideal_diagnostic"
+            c.profile.early_wire_model.scope()
         };
         need(
             at(p, "scope")?.as_str() == Some(expected),

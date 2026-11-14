@@ -42,9 +42,34 @@ pub(crate) struct Profile {
     /// order of the profile's `macros`. The Liberty file of a group at a corner is the pinned
     /// file `<group>_<corner>`.
     pub(crate) groups: Vec<String>,
+    /// Wire model required for timing reports before placement-based estimation.
+    pub(crate) early_wire_model: EarlyWireModel,
     /// The identifier of the sizing family; none: the longest common prefix of its cells.
     pub(crate) family: Option<String>,
     pub(crate) guards: Guards,
+}
+
+/// Wire models admitted for pre-placement diagnostic reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EarlyWireModel {
+    Ideal,
+    Lumped,
+}
+
+impl EarlyWireModel {
+    pub(crate) fn report_model(self) -> &'static str {
+        match self {
+            Self::Ideal => "ideal",
+            Self::Lumped => "wireload_lumped",
+        }
+    }
+
+    pub(crate) fn scope(self) -> &'static str {
+        match self {
+            Self::Ideal => "ideal_diagnostic",
+            Self::Lumped => "wireload_diagnostic",
+        }
+    }
 }
 
 /// `[a-z][a-z0-9]{0,7}`: a corner name or a Liberty group.
@@ -86,6 +111,7 @@ impl Profile {
             library: "ez130_8t".into(),
             corners: vec!["tt".into(), "ss".into()],
             groups: vec!["std".into(), "ram".into()],
+            early_wire_model: EarlyWireModel::Ideal,
             family: Some("BUFX".into()),
             guards: Guards {
                 filler_cells: 9,
@@ -187,11 +213,23 @@ impl Profile {
             "PDK contract: one to sixteen tap lattices required",
         )?;
         let routing = at(contract, "routing")?;
+        let early_wire_model = match profile.get("early_wire_model") {
+            None => EarlyWireModel::Ideal,
+            Some(value) if value.as_str() == Some("ideal") => EarlyWireModel::Ideal,
+            Some(value) if value.as_str() == Some("wireload_lumped") => EarlyWireModel::Lumped,
+            Some(_) => {
+                return Err(Failure::new(
+                    "INPUT",
+                    "invalid PDK profile early_wire_model",
+                ));
+            }
+        };
         Ok(Profile {
             pdk: pdk.to_string(),
             library: library.to_string(),
             corners,
             groups,
+            early_wire_model,
             family: None,
             guards: Guards {
                 filler_cells,
@@ -290,6 +328,7 @@ mod tests {
         assert_eq!(p.library, "gf180mcu_fd_sc_mcu7t5v0");
         assert_eq!(p.corners, ["tt", "ss"]);
         assert_eq!(p.groups, ["std", "ram"]);
+        assert_eq!(p.early_wire_model, EarlyWireModel::Ideal);
         assert_eq!(p.liberty_keys(), ["std_tt", "ram_tt", "std_ss", "ram_ss"]);
         assert_eq!(p.corner_label(), "TT/SS");
         assert_eq!(p.guards.filler_cells, 12);
@@ -309,6 +348,17 @@ mod tests {
         );
         assert_eq!(p.family_id(&["buf_2", "clkbuf_2"]), "buffers");
         assert_eq!(p.family_id(&[]), "buffers");
+    }
+
+    #[test]
+    fn a_profile_can_require_lumped_preplacement_reports() {
+        let (mut profile, contract) = documents();
+        profile.set("early_wire_model", Json::str("wireload_lumped"));
+        let parsed = Profile::parse(&profile, &contract).unwrap();
+        assert_eq!(parsed.early_wire_model.report_model(), "wireload_lumped");
+        assert_eq!(parsed.early_wire_model.scope(), "wireload_diagnostic");
+        profile.set("early_wire_model", Json::str("spef_rc"));
+        assert!(Profile::parse(&profile, &contract).is_err());
     }
 
     /// RCLI-REQ-0029: the recipe without a profile is the IHP one, with its literal values.

@@ -6,14 +6,14 @@
 9c10da7568a5957e3377e3b4faad080b4fa29e6f94dfbdecfb619aa1eb5c8f10  crates/apps/rusteda-cli/src/export/frozen.rs
 8d22aa612c00a83dc7e525a9e20452c14c1cad5d6d9712987309cd7aaf08286b  crates/apps/rusteda-cli/src/export/schema.rs
 ab6d1a246467ad69530cda543725c9cee3c9ec41d2d3d89ae06abba8a39ff3ab  crates/apps/rusteda-cli/src/flow/context.rs
-14c13e4675b3eeb86a80c48e60806fba1034d61eba0466f3c3b0a3cbbba0c629  crates/apps/rusteda-cli/src/flow/eco.rs
+70822bd138a075b2dfc66acef940702ab7fdec9e01bb614bc923af245e2b723b  crates/apps/rusteda-cli/src/flow/eco.rs
 bc477940028a9f702f583fdda43f4007e74e299780b3ed386ff9b47cb9c00486  crates/apps/rusteda-cli/src/flow/eco_estimated.rs
 ae65271360db85421fb52cd086ad0839960767e277ea19e46e48244144eaab63  crates/apps/rusteda-cli/src/flow/eco_graph.rs
 b11036b76ea001c3c3510e54e4e603e329efcd06d8b89bfec29bcf7cf29eb52f  crates/apps/rusteda-cli/src/flow/eco_inputs.rs
-5e2dc775bb764e7821fca52643de505f5b0613962a6c3d324003d9f21f9e4450  crates/apps/rusteda-cli/src/flow/helpers.rs
+1c813e442c7f7ec4b2887c8a447027f70cc122cb63f3ee99209e1727bb75600e  crates/apps/rusteda-cli/src/flow/helpers.rs
 41116876bbc7b3af1844d91faa36bf7cc3e14ef733927c5dc4721537bb1059eb  crates/apps/rusteda-cli/src/flow/liberty.rs
 96da653bd0b6a9856a7c0f123cffda39370d3a3867d75507510dc3adb7c9237f  crates/apps/rusteda-cli/src/flow/mod.rs
-ee5b3ce207a3e06e951e9889079eb45a4b1253e30b0f4bbf37816ffc73f614c1  crates/apps/rusteda-cli/src/flow/profile.rs
+0efa6f73a5d307d309d7575a1f7422dc1d3362f712aab0553b3efcecb776bbab  crates/apps/rusteda-cli/src/flow/profile.rs
 87657544350cadfae87fa57d87ede432b31cf1868524a7f2fee28e1d90bbc83f  crates/apps/rusteda-cli/src/flow/py.rs
 98c48e477bfe115e17d0d1da919d769119365889284dacf87cba2d7db829485d  crates/apps/rusteda-cli/src/import.rs
 3b704feacd5bfcfc5ac78a84b5d5e5ef91a880d42157aa4bae259787d1b4bfe8  crates/apps/rusteda-cli/src/import_lib.rs
@@ -327,7 +327,7 @@ a3898b6ba0214ce47b227dad27740b6211368703d86a277ceb2e1ce2f5a66437  docs/specs/com
 e4729252fe9b063d213ef331fe71ac376e5ca5a03614a47f5523e380ff57f80f  docs/specs/core/README.md
 c4978424e18f357b945f0b1d95aa78f27ff845041a85a6c51e6bd277e9fa00ed  docs/specs/core/netlist.md
 31d1e8f32c07610acdaf43f4c1ec826d290ea118346c172f18b19f2b02870f44  docs/specs/liberty/liberty.md
-47448419cfd40dfe7bdd2c35029ea86586a48defc58262e3070e59962ddb1ae0  docs/specs/rusteda-cli/README.md
+a4cd43886c5c21979a4dde6b54c696b3087f1bdb4601d50a5539beae9d217998  docs/specs/rusteda-cli/README.md
 db08e8e8daf30d877fc0040f23c79185deed8f69b55e703174d7f0b18a719f86  docs/specs/rusteda-cli/connectivity.md
 26db6bf7b6b7e9ce585637d4332435ecda802a8e20598e90c2f5be60a2254c10  docs/specs/rusteda-cli/spef.md
 4559b982f40a7794f6cb0b618794134a20e01e307d99641720fbc861d52f4b5a  docs/specs/sdc/sdc.md

@@ -564,7 +564,7 @@ fn bundle<'a>(
         Json::str(if estimated {
             "estimated_rc"
         } else {
-            "ideal_diagnostic"
+            c.profile.early_wire_model.scope()
         }),
     );
     policy.set(
@@ -878,14 +878,15 @@ fn stage<'a>(
     for x in &reports {
         models.push(at(scope_of(x)?, "wire_model")?.as_str().unwrap_or(""));
     }
-    let ideal = models.iter().all(|m| *m == "ideal");
+    let early = c.profile.early_wire_model;
+    let diagnostic = models.iter().all(|m| *m == early.report_model());
     require(
-        ideal || models.iter().all(|m| *m == "spef_rc"),
+        diagnostic || models.iter().all(|m| *m == "spef_rc"),
         "REPORT_SCOPE",
         "mixed or unsupported wire models",
     )?;
     let policy_scope = text(&policy, "scope")?;
-    let mut expected = if ideal { "ideal_diagnostic" } else { "spef_rc" };
+    let mut expected = if diagnostic { early.scope() } else { "spef_rc" };
     if expected == "spef_rc" && policy_scope == "estimated_rc" {
         require(
             manifest.get("placement").is_some() && manifest.get("rc_policy").is_some(),
@@ -918,7 +919,7 @@ fn stage<'a>(
             require(
                 expected == "estimated_rc",
                 "UNSUPPORTED",
-                "ideal and extracted hold are planned by the reference planner (native_ecos.py)",
+                "native electrical and hold planning requires estimated RC",
             )?;
             placement = PlacementFiles::read(&inputs)?;
             let mut geometry = Geometry::new(&inputs, &placement)?;

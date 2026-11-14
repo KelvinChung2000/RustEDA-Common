@@ -110,6 +110,9 @@ entries sorted by `(line, col, code, construct_path)`, formatted as
 - `L0110` (`warning`): unknown enumerated attribute value or non-Boolean flag value;
 - `L0111` (`warning`): non-numeric value in a numeric attribute or table entry;
 - `L0112` (`warning`): `timing` group without `related_pin`;
+- `L0113` (`warning`): opaque memory behavior; pins and timing remain available;
+- `L0114` (`warning`): validated SDF annotation or output-retention waveform data outside
+  ordinary NLDM STA (LIBERTY-REQ-0060);
 - `L0200` to `L0208` (`warning`): cell problems (LIBERTY-REQ-0057, LIBERTY-REQ-0059).
 
 **LIBERTY-REQ-0054** Consumed constructs: the reader consumes the `library`, `lu_table_template`,
@@ -160,3 +163,27 @@ and child `timing`/`internal_power` groups with per-member `pin (...)` overrides
 `bus` or `bundle` group is malformed, references an unknown or invalid `bus_type`, or contains an
 unsupported or unknown construct, the reader records a cell problem `L0208` in `Cell::problems`
 (never silently dropping the cell or its bus/bundle).
+
+**LIBERTY-REQ-0060** Memory timing scope: `sdf_edges` is an SDF start/end-edge annotation;
+`timing_type` and the rise/fall constraint tables still select the ordinary STA checks. Its
+four specified values (`noedge`, `start_edge`, `end_edge`, `both_edges`) are accepted equally
+on scalar, bus and bundle pins. Another value additionally emits `L0110`. The reader emits
+`L0114` because the tools do not emit SDF edge annotations.
+
+`retaining_rise`/`retaining_fall` describe how long the old output value remains valid after
+an input event; `retain_rise_slew`/`retain_fall_slew` describe the subsequent decay waveform.
+They are not substitutes for `cell_rise`/`cell_fall`, setup/hold constraints or pin limits.
+The reader validates their templates, axes and value counts with the same rules as other
+NLDM tables, including `L0205`–`L0207` and an unusable cell for malformed tables. It then
+emits `L0114`: output-retention/decay waveforms are not represented or analyzed by the
+ordinary NLDM timing model. This limited scope is identical for scalar and expanded bus
+pins. The original libraries remain unchanged; cell-delay, setup/hold, pulse/period and
+slew/capacitance/fanout constraints stay active. A user requiring output-retention waveform
+verification must not treat ordinary STA as that verification.
+
+The distinction follows the [Liberty Reference Manual R-2020.09](https://zao111222333.github.io/liberty-db/2020.09/reference_manual.html),
+`sdf_edges` (p. 328), `retaining_fall`/`retaining_rise` (pp. 366–367), and retention slew
+groups (pp. 368–369). `verification/verify_memory_scope.py` checks the ordinary-STA scope
+against an external OpenSTA binary without reading its source. Real SRAM22 TT/SS/FF and
+both baseline standard-cell libraries are covered by the explicit
+`liberty_memory_pdk` integration test; missing PDK paths fail that check rather than pass.

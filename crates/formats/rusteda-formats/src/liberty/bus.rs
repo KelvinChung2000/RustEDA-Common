@@ -206,7 +206,8 @@ fn check_supported_tree(ctx: Ctx, g: &Group) -> Result<(), String> {
             "timing" => Ctx::Timing,
             "internal_power" => Ctx::InternalPower,
             "cell_rise" | "cell_fall" | "rise_transition" | "fall_transition"
-            | "rise_constraint" | "fall_constraint" | "power" | "rise_power" | "fall_power" => {
+            | "rise_constraint" | "fall_constraint" | "retaining_rise" | "retaining_fall"
+            | "retain_rise_slew" | "retain_fall_slew" | "power" | "rise_power" | "fall_power" => {
                 Ctx::Table
             }
             _ => continue,

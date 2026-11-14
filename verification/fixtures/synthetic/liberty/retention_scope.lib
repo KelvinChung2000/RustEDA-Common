@@ -1,0 +1,53 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Independently authored ordinary STA / output-retention scope fixture. */
+library ( L )  {
+ delay_model : table_lookup;
+ time_unit : "1ns";
+ capacitive_load_unit ( 1 , pf ) ;
+ voltage_unit : "1V";
+ nom_process : 1;
+ nom_voltage : 1;
+ nom_temperature : 25;
+ input_threshold_pct_rise : 50;
+ input_threshold_pct_fall : 50;
+ output_threshold_pct_rise : 50;
+ output_threshold_pct_fall : 50;
+ slew_lower_threshold_pct_rise : 20;
+ slew_upper_threshold_pct_rise : 80;
+ slew_lower_threshold_pct_fall : 20;
+ slew_upper_threshold_pct_fall : 80;
+ cell ( MEM )  {
+ area : 1;
+ pin ( CLK )  {
+direction : input;
+ clock : true;
+}
+ pin ( Q )  {
+ direction : output;
+ timing (  )  {
+ related_pin : CLK;
+sdf_edges : both_edges;
+ timing_type : rising_edge;
+ timing_sense : non_unate;
+ cell_rise ( scalar ) {
+values ( "1.2" ) ;
+}
+ cell_fall ( scalar ) {
+values ( "1.3" ) ;
+}
+ rise_transition ( scalar ) {
+values ( "0.1" ) ;
+}
+ fall_transition ( scalar ) {
+values ( "0.1" ) ;
+}
+ retaining_rise ( scalar ) {
+values ( "0.01" ) ;
+}
+ retaining_fall ( scalar ) {
+values ( "0.01" ) ;
+}
+ }
+ }
+ }
+ }

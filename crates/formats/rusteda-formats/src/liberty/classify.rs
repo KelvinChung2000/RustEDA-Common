@@ -22,7 +22,7 @@ enum Form {
 /// The class of an attribute in its group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AttrClass {
-    /// Read into the model; one statement expected.
+    /// Read or validated by the builder; one statement expected.
     Consumed(Form),
     /// Read into the model; a list of complex statements.
     List,
@@ -57,7 +57,7 @@ pub(super) enum Ctx {
 /// The class of a group in its parent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GroupClass {
-    /// Read into the model; `true` when one group of the kind is expected.
+    /// Read or validated by the builder; `true` when one group of the kind is expected.
     Consumed(bool),
     Ignorable,
     Unsupported,
@@ -281,12 +281,13 @@ fn attr_class(ctx: Ctx, name: &str) -> AttrClass {
             _ => AttrClass::Unknown,
         },
         Ctx::Timing => match name {
-            "related_pin" | "timing_sense" | "timing_type" | "when" | "sdf_cond" => C(S),
+            "related_pin" | "timing_sense" | "timing_type" | "when" | "sdf_cond" | "sdf_edges" => {
+                C(S)
+            }
             "related_output_pin" => I,
             "related_bus_pins"
             | "related_bus_equivalent"
             | "mode"
-            | "sdf_edges"
             | "sdf_cond_start"
             | "sdf_cond_end"
             | "when_start"
@@ -401,7 +402,8 @@ fn group_class(ctx: Ctx, kind: &str) -> GroupClass {
         },
         Ctx::Timing => match kind {
             "cell_rise" | "cell_fall" | "rise_transition" | "fall_transition"
-            | "rise_constraint" | "fall_constraint" => G(true),
+            | "rise_constraint" | "fall_constraint" | "retaining_rise" | "retaining_fall"
+            | "retain_rise_slew" | "retain_fall_slew" => G(true),
             "output_current_rise"
             | "output_current_fall"
             | "receiver_capacitance1_rise"
@@ -410,11 +412,7 @@ fn group_class(ctx: Ctx, kind: &str) -> GroupClass {
             | "receiver_capacitance2_fall"
             | "ccsn_first_stage"
             | "ccsn_last_stage" => GI,
-            "retaining_rise"
-            | "retaining_fall"
-            | "retain_rise_slew"
-            | "retain_fall_slew"
-            | "rise_propagation"
+            "rise_propagation"
             | "fall_propagation"
             | "cell_degradation"
             | "noise_immunity_above_high"

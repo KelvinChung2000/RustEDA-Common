@@ -32,6 +32,14 @@ The foundation now carries what the Ibex host campaigns of 2026-11-05 and
 
 ## Shared foundation and IHP interfaces
 
+Original SRAM22 TT/SS/FF libraries now keep every memory bus pin when a timing
+group contains `sdf_edges` or output-retention tables. The input libraries and
+their slew/capacitance constraints are unchanged. The reader validates retention
+table shapes and reports `L0114`: ordinary NLDM timing covers cell delays and
+setup/hold checks, but does not verify output-retention/decay waveforms or emit
+SDF annotations. [The Liberty scope](specs/liberty/liberty.md#reader-messages-and-construct-classification)
+describes these limits; this is not a macro signoff or new physical-flow result.
+
 The foundation now includes the IHP/SRAM interface work used by the qualified
 Ibex flow: Liberty memory buses and pin metadata, explicit driving-cell
 constraints, escaped mapped-netlist identifiers, and bounded connectivity

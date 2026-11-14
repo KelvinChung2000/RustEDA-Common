@@ -27,6 +27,8 @@ pub(super) mod code {
     /// A timing group without a related pin.
     pub(crate) const NO_RELATED_PIN: &str = "L0112";
     pub(crate) const OPAQUE_MEMORY: &str = "L0113";
+    /// Validated timing metadata or waveform tables outside ordinary NLDM STA.
+    pub(crate) const TIMING_SCOPE: &str = "L0114";
     /// Cell problems (LIBERTY-REQ-0057): each one marks its cell unusable.
     pub(crate) const BAD_DIRECTION: &str = "L0200";
     pub(crate) const BAD_FUNCTION: &str = "L0201";
@@ -56,6 +58,9 @@ fn help(code: &str) -> Option<&'static str> {
         code::NO_RELATED_PIN => "the timing group produces no timing arc",
         code::OPAQUE_MEMORY => {
             "memory state is opaque; use its original macro implementation for functional verification"
+        }
+        code::TIMING_SCOPE => {
+            "ordinary NLDM STA retains cell delays, setup/hold, pulse checks and pin limits; SDF emission and output-retention waveform analysis are not supported"
         }
         c if c.starts_with("L02") => "cells with problems are marked unusable",
         _ => return None,

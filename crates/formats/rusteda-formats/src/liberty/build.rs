@@ -124,6 +124,20 @@ const ARC_TABLES: [(&str, &str); 6] = [
     ("fall_constraint", "library/cell/pin/timing/fall_constraint"),
 ];
 
+/// Output-retention waveforms are validated separately from ordinary NLDM timing.
+const RETENTION_TABLES: [(&str, &str); 4] = [
+    ("retaining_rise", "library/cell/pin/timing/retaining_rise"),
+    ("retaining_fall", "library/cell/pin/timing/retaining_fall"),
+    (
+        "retain_rise_slew",
+        "library/cell/pin/timing/retain_rise_slew",
+    ),
+    (
+        "retain_fall_slew",
+        "library/cell/pin/timing/retain_fall_slew",
+    ),
+];
+
 /// The table groups of an internal_power group, with their construct paths.
 const POWER_TABLES: [(&str, &str); 3] = [
     ("power", "library/cell/pin/internal_power/power"),
@@ -783,6 +797,61 @@ impl Builder<'_> {
         })
     }
 
+    /// Keep SDF annotation and output-retention waveforms separate from NLDM propagation.
+    /// Retention tables still undergo the same template, shape and index validation.
+    fn timing_scope(
+        &mut self,
+        templates: &BTreeMap<String, Template>,
+        timing: &Group,
+        cell: &str,
+        pin: &str,
+        problems: &mut Vec<String>,
+    ) {
+        if let Some((edges, location)) = simple_at(timing, "sdf_edges") {
+            if !matches!(
+                edges.trim(),
+                "noedge" | "start_edge" | "end_edge" | "both_edges"
+            ) {
+                self.diags.warn(
+                    code::UNKNOWN_VALUE,
+                    "library/cell/pin/timing/sdf_edges",
+                    location,
+                    || format!("unknown SDF edge specification '{edges}'; SDF is not emitted"),
+                );
+            }
+            self.diags.warn(
+                code::TIMING_SCOPE,
+                "library/cell/pin/timing/sdf_edges",
+                location,
+                || "SDF edge annotation is not emitted; timing_type and rise/fall constraints determine ordinary NLDM STA".to_string(),
+            );
+        }
+        if !timing.groups.iter().any(|group| {
+            matches!(
+                group.kind.as_str(),
+                "retaining_rise" | "retaining_fall" | "retain_rise_slew" | "retain_fall_slew"
+            )
+        }) {
+            return;
+        }
+        let validated = self.tables(
+            templates,
+            timing,
+            RETENTION_TABLES,
+            || format!("pin {pin} output-retention table"),
+            cell,
+            problems,
+        );
+        for ((kind, path), table) in RETENTION_TABLES.into_iter().zip(validated) {
+            if table.is_some() {
+                let group = timing.children(kind).next().expect("validated table group");
+                self.diags.warn(code::TIMING_SCOPE, path, (group.line, group.col), || {
+                    format!("{kind} is validated but output retention/decay waveforms are outside ordinary NLDM STA; cell delay, setup/hold and pin limits remain active")
+                });
+            }
+        }
+    }
+
     fn pin_group(
         &mut self,
         templates: &BTreeMap<String, Template>,
@@ -862,6 +931,7 @@ impl Builder<'_> {
             };
             let sdf_cond = t.simple("sdf_cond").map(str::to_string);
             let context = || format!("pin {name} arc from {related}");
+            self.timing_scope(templates, t, cell, name, problems);
             let [
                 cell_rise,
                 cell_fall,

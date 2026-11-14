@@ -5,14 +5,15 @@
 555f62d8a077d26be08b052be1878d7482ccb9950c48d355d334797a7333b983  crates/apps/rusteda-cli/src/export/connectivity/tests.rs
 9c10da7568a5957e3377e3b4faad080b4fa29e6f94dfbdecfb619aa1eb5c8f10  crates/apps/rusteda-cli/src/export/frozen.rs
 8d22aa612c00a83dc7e525a9e20452c14c1cad5d6d9712987309cd7aaf08286b  crates/apps/rusteda-cli/src/export/schema.rs
-56b4b6b3f4942817e308b910cb10d2b7f51b0dffd95d0f697bd5560abb9d1a12  crates/apps/rusteda-cli/src/flow/context.rs
-59e723b4c55f6b1c0b6c16a4033497bf79abf9a44729c56327f2f88e1d26f03c  crates/apps/rusteda-cli/src/flow/eco.rs
+ab6d1a246467ad69530cda543725c9cee3c9ec41d2d3d89ae06abba8a39ff3ab  crates/apps/rusteda-cli/src/flow/context.rs
+14c13e4675b3eeb86a80c48e60806fba1034d61eba0466f3c3b0a3cbbba0c629  crates/apps/rusteda-cli/src/flow/eco.rs
 ec79e60330bcd03f8d66680ed3027985af1ac75393c9f64e06075286911c3f1f  crates/apps/rusteda-cli/src/flow/eco_estimated.rs
 ae65271360db85421fb52cd086ad0839960767e277ea19e46e48244144eaab63  crates/apps/rusteda-cli/src/flow/eco_graph.rs
 b11036b76ea001c3c3510e54e4e603e329efcd06d8b89bfec29bcf7cf29eb52f  crates/apps/rusteda-cli/src/flow/eco_inputs.rs
-bed22ff140ca688785e56eb5f2747732a3586a26c7d1a589c063f089aac44d65  crates/apps/rusteda-cli/src/flow/helpers.rs
+5e2dc775bb764e7821fca52643de505f5b0613962a6c3d324003d9f21f9e4450  crates/apps/rusteda-cli/src/flow/helpers.rs
 41116876bbc7b3af1844d91faa36bf7cc3e14ef733927c5dc4721537bb1059eb  crates/apps/rusteda-cli/src/flow/liberty.rs
-d7b2ee9e409abf5b9c1b06f876140a4fc763c4aa9639bc479eb9dc3194e8dd8d  crates/apps/rusteda-cli/src/flow/mod.rs
+96da653bd0b6a9856a7c0f123cffda39370d3a3867d75507510dc3adb7c9237f  crates/apps/rusteda-cli/src/flow/mod.rs
+ee5b3ce207a3e06e951e9889079eb45a4b1253e30b0f4bbf37816ffc73f614c1  crates/apps/rusteda-cli/src/flow/profile.rs
 87657544350cadfae87fa57d87ede432b31cf1868524a7f2fee28e1d90bbc83f  crates/apps/rusteda-cli/src/flow/py.rs
 98c48e477bfe115e17d0d1da919d769119365889284dacf87cba2d7db829485d  crates/apps/rusteda-cli/src/import.rs
 3b704feacd5bfcfc5ac78a84b5d5e5ef91a880d42157aa4bae259787d1b4bfe8  crates/apps/rusteda-cli/src/import_lib.rs
@@ -141,7 +142,7 @@ ea24d796dda29876851e47427d91fb03988edfc7f160baa4cdffe782fc8ccb2c  crates/apps/ru
 75b503c2456e43b9de3665e0d70ea1d4da98f21f985e74d3a5d3e5ef760d3ae1  crates/apps/rusteda-cli/tests/fixtures/flow/run/logs/fe_temporary_cts.stdout
 27b10f94b9d19f9c2ef788c310382460199c5f8e14a195c0e73678d12b65b256  crates/apps/rusteda-cli/tests/fixtures/flow/run/logs/fe_temporary_seed.stdout
 9c7c5e0f7c8f018497f750125e7feee9c3cdfa97d1dd46f3322792c064ce6c8c  crates/apps/rusteda-cli/tests/fixtures/flow/run/step-receipts.json
-fa51cd4cf3684354ea192d47f4d98c1bd028b7b1d90eaa3abc8bb67c46873e87  crates/apps/rusteda-cli/tests/frontend_flow.rs
+e273ccab9fe826c3fc188cbf73286be393d30763511c925829c6410e640ee7c0  crates/apps/rusteda-cli/tests/frontend_flow.rs
 7274d8cd0b422035253d061d4b3a8e1c35f0614c2a0eb3ff5e6568cca0c7b01f  crates/apps/rusteda-cli/tests/import_lib_cache.rs
 d9ee3c935b48f4d4efbf18855117cc85dd7db130e20c6b92c01787d1455cede2  crates/apps/rusteda-cli/tests/import_logic.rs
 1f7a933e276981252a213381e9cf665973236af4f50f7a3091bca22cbfbb4a5b  crates/apps/rusteda-cli/tests/import_netlist.rs
@@ -324,7 +325,7 @@ a3898b6ba0214ce47b227dad27740b6211368703d86a277ceb2e1ce2f5a66437  docs/specs/com
 e4729252fe9b063d213ef331fe71ac376e5ca5a03614a47f5523e380ff57f80f  docs/specs/core/README.md
 c4978424e18f357b945f0b1d95aa78f27ff845041a85a6c51e6bd277e9fa00ed  docs/specs/core/netlist.md
 e3af311a4294c43c20e6dc05f1bbc626d889e2fede3da1e3167bbbec2063933c  docs/specs/liberty/liberty.md
-2066a830e19bace2047bdd9294283f957f9279fdd192607808aee9f9caa1ba63  docs/specs/rusteda-cli/README.md
+47448419cfd40dfe7bdd2c35029ea86586a48defc58262e3070e59962ddb1ae0  docs/specs/rusteda-cli/README.md
 db08e8e8daf30d877fc0040f23c79185deed8f69b55e703174d7f0b18a719f86  docs/specs/rusteda-cli/connectivity.md
 26db6bf7b6b7e9ce585637d4332435ecda802a8e20598e90c2f5be60a2254c10  docs/specs/rusteda-cli/spef.md
 4559b982f40a7794f6cb0b618794134a20e01e307d99641720fbc861d52f4b5a  docs/specs/sdc/sdc.md

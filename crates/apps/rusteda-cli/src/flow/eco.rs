@@ -214,7 +214,11 @@ fn bundle<'a>(
     let profile = root.join("frontend/profiles");
     let estimated = matches!(operation, "electrical" | "hold");
     let sdc = c.file("sdc")?;
-    let corners = ["tt", "ss"];
+    // The corners and Liberty groups of the run's PDK profile (`tt`, `ss` and `std`, `ram` in
+    // the IHP recipe): the pin table of a group at a corner is the step output
+    // `fe_caps_<corner>_<group>` of the pinned library `<group>_<corner>`.
+    let corners: Vec<&str> = c.profile.corners.iter().map(String::as_str).collect();
+    let groups: Vec<&str> = c.profile.groups.iter().map(String::as_str).collect();
     // Everything the round reads is hashed, and the documents decoded, beside each other
     // first; the records and checks below then find them.
     {
@@ -226,12 +230,12 @@ fn bundle<'a>(
             ));
             items.push((root.join(format!("logs/fe_{tag}_def.stdout")), Kind::Bytes));
         }
-        for co in corners {
+        for co in &corners {
             items.push((drv_file(root, tag, co, "drv"), Kind::Report));
         }
         items.push((graph.clone(), Kind::Graph));
         if estimated {
-            for co in corners {
+            for co in &corners {
                 items.push((drv_file(root, tag, co, "endpoints"), Kind::Report));
             }
             items.push((
@@ -258,8 +262,8 @@ fn bundle<'a>(
         for x in ["io.json", "delay.json", "sizing.json", "cell-buses.json"] {
             items.push((profile.join(x), Kind::Hash));
         }
-        for co in corners {
-            for k in ["std", "ram"] {
+        for co in &corners {
+            for k in &groups {
                 items.push((
                     root.join(format!("logs/fe_caps_{co}_{k}.stdout")),
                     Kind::Hash,
@@ -333,13 +337,13 @@ fn bundle<'a>(
         )?;
     }
     let mut corner_records: Vec<(&str, Json)> = Vec::new();
-    for co in corners {
+    for co in corners.iter().copied() {
         let drv = c.dynamic(&drv_file(root, tag, co, "drv"))?;
         let mut tables = Vec::new();
-        for (kind, key) in [("std", "std"), ("ram", "ram")] {
+        for group in &groups {
             let table =
-                c.rec(&c.dynamic(&root.join(format!("logs/fe_caps_{co}_{kind}.stdout")))?)?;
-            let library = c.rec(&c.file(&format!("{key}_{co}"))?)?;
+                c.rec(&c.dynamic(&root.join(format!("logs/fe_caps_{co}_{group}.stdout")))?)?;
+            let library = c.rec(&c.file(&format!("{group}_{co}"))?)?;
             tables.push(with(table, "library", library));
         }
         let mut record = vec![("pin_tables", Json::List(tables)), ("drv", c.rec(&drv)?)];
@@ -477,7 +481,7 @@ fn bundle<'a>(
             "gated root does not derive directly from the original primary clock",
         )?;
         let mut drv_records = Vec::new();
-        for co in corners {
+        for co in &corners {
             let record = at(at(at(&inputs, "corners")?, co)?, "drv")?;
             drv_records.push(c.rec(Path::new(text(record, "path")?))?);
         }

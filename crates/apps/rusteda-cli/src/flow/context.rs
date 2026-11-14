@@ -15,6 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rustc_hash::FxHashMap as HashMap;
 use sha2::{Digest, Sha256};
 
+use super::profile::Profile;
 use crate::estimate::{Fail, Json, obj, parse_json, path_str};
 
 /// A failure with the reference's code (`INPUT` when the reference raises a plain error).
@@ -586,6 +587,9 @@ pub(crate) struct Context {
     /// The resolved run root.
     pub(crate) root: PathBuf,
     pub(crate) digests: Digests,
+    /// The PDK profile of the run: the pinned `files:profile` and `files:contract`, else the
+    /// IHP recipe's.
+    pub(crate) profile: Profile,
 }
 
 impl Context {
@@ -602,7 +606,9 @@ impl Context {
         // `Path.resolve()` of the run root, which exists.
         let root = fs::canonicalize(&run_root).unwrap_or(run_root);
         digests.open_flow(&root);
-        const SMALL: [&str; 15] = [
+        const SMALL: [&str; 17] = [
+            "profile",
+            "contract",
             "sdc",
             "interfaces",
             "floorplan",
@@ -659,12 +665,26 @@ impl Context {
             }
         }
         let files = at(&doc, "files")?;
+        // The pinned profile and contract were verified above; a context without a profile is
+        // the IHP recipe.
+        let profile = match files.get("profile") {
+            Some(record) => Profile::read(
+                Path::new(text(record, "path")?),
+                Path::new(text(at(files, "contract")?, "path")?),
+            )?,
+            None => Profile::ihp(),
+        };
         let mut liberty = 0i128;
-        for k in ["std_tt", "std_ss", "ram_tt", "ram_ss"] {
-            liberty += at(at(files, k)?, "bytes")?.as_int().unwrap_or(i64::MAX) as i128;
+        for k in profile.liberty_keys() {
+            liberty += at(at(files, &k)?, "bytes")?.as_int().unwrap_or(i64::MAX) as i128;
         }
         need(liberty <= 64 << 20, "aggregate Liberty budget")?;
-        Ok(Context { doc, root, digests })
+        Ok(Context {
+            doc,
+            root,
+            digests,
+            profile,
+        })
     }
 
     /// `paths(c)[key]`: the path of a pinned file as the context writes it.

@@ -15,6 +15,7 @@ mod eco_graph;
 mod eco_inputs;
 pub mod helpers;
 pub(crate) mod liberty;
+pub(crate) mod profile;
 pub(crate) mod py;
 
 use std::io::Write;

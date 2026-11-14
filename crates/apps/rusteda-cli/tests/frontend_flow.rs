@@ -449,3 +449,184 @@ fn a_used_workspace_and_a_changed_pinned_input_are_refused() {
     assert_eq!(error["error"], "pinned input changed: sdc");
     assert!(!run.root.join("frontend/profiles-2").exists());
 }
+
+/// RCLI-REQ-0029: a context that pins a PDK profile and its contract states the PDK, the
+/// corners, the database unit and the guard values; the same inputs without a profile are the
+/// IHP recipe.
+#[test]
+fn a_profile_bound_context_states_its_pdk() {
+    let run = Run::new("profile");
+    let write = |name: &str, text: String| -> PathBuf {
+        let path = run.base.join(name);
+        fs::write(&path, text).unwrap();
+        path
+    };
+    let profile = |corners: [&str; 2]| {
+        json!({"schema": "rusteda.native-pdk-profile.v1", "name": "gf180mcu", "pdk": "gf180mcuD",
+            "library": "gf180mcu_fd_sc_mcu7t5v0",
+            "macros": [{"id": "ram", "master": "RAM8", "instances": ["u_ram"]}],
+            "corners": [
+                {"name": corners[0], "rc": "nom", "liberty": {"std": "pdk:a.lib", "ram": "pdk:b.lib"}},
+                {"name": corners[1], "rc": "nom", "liberty": {"std": "pdk:c.lib", "ram": "pdk:d.lib"}}]})
+    };
+    let contract = json!({"schema": "rusteda.native-pdk-contract.v1",
+        "physical": {"filler_cells": 9, "tap": {"body_view": "gds", "lattices": [
+            {"max_gap": 42000, "pattern": {"kind": "staggered", "phase": 21000, "unpaired": "cell_top"}}]}},
+        "routing": {"min_routing_layer": "Metal2", "max_routing_layer": "TopMetal2"}});
+    // The fixture's floorplan at 2000 database units per micron, and its LEF with the class
+    // keywords as the GF180MCU library writes them.
+    let floorplan = fs::read_to_string(run.fix.join("recipe/floorplan.json"))
+        .unwrap()
+        .replace("\"units_per_micron\": 1000", "\"units_per_micron\": 2000");
+    let lef = fs::read_to_string(run.fix.join("pdk/cells.lef"))
+        .unwrap()
+        .replace("CLASS CORE ANTENNACELL ;", "CLASS core ANTENNACELL ;");
+    assert!(floorplan.contains("2000") && lef.contains("CLASS core ANTENNACELL"));
+    let floorplan = write("floorplan-2000.json", floorplan);
+    let lef = write("cells-lower.lef", lef);
+    let context_path = run.root.join("frontend/context.json");
+    let legacy: Value = serde_json::from_str(&fs::read_to_string(&context_path).unwrap()).unwrap();
+    let bind = |profile: &Value, contract: &Value| {
+        let mut doc = legacy.clone();
+        let files = doc["files"].as_object_mut().unwrap();
+        for (key, path) in [
+            ("profile", write("profile.json", profile.to_string())),
+            ("contract", write("contract.json", contract.to_string())),
+            ("floorplan", floorplan.clone()),
+            ("std_lef", lef.clone()),
+        ] {
+            files.insert(key.into(), serde_json::from_str(&record(&path)).unwrap());
+        }
+        fs::write(&context_path, doc.to_string()).unwrap();
+    };
+    let read = |rel: &str| -> Value {
+        serde_json::from_str(&fs::read_to_string(run.root.join(rel)).unwrap()).unwrap()
+    };
+    let refused = |command: &str, workspace: &str, extra: &[&str]| -> String {
+        let out = run.rusteda(command, workspace, extra);
+        assert_eq!(out.status.code(), Some(2), "{command} {workspace}");
+        let error: Value = serde_json::from_slice(&out.stderr).unwrap();
+        assert_eq!(error["code"], "INPUT");
+        error["error"].as_str().unwrap().to_string()
+    };
+
+    bind(&profile(["tt", "ss"]), &contract);
+    run.ok("frontend-profiles", "frontend/profiles-pdk", &[]);
+    let delay = read("frontend/profiles-pdk/delay.json");
+    assert_eq!(delay["pdk"], "gf180mcuD");
+    assert_eq!(delay["library"], "gf180mcu_fd_sc_mcu7t5v0");
+    assert_eq!(delay["corners"][0]["name"], "tt");
+    assert_eq!(delay["corners"][1]["name"], "ss");
+    assert_eq!(delay["sources"][0]["role"], "liberty_tt");
+    assert_eq!(delay["sources"][1]["role"], "liberty_ss");
+    assert_eq!(
+        delay["buffers"][0]["function_check"],
+        "identity in original TT/SS Liberty"
+    );
+    // The lower-case `core ANTENNACELL` class is the port diode's class.
+    assert_eq!(delay["antenna_cells"][0]["name"], "ANTENNA2");
+    let sizing = read("frontend/profiles-pdk/sizing.json");
+    assert_eq!(sizing["pdk"], "gf180mcuD");
+    assert_eq!(sizing["dbu_per_um"], 2000);
+    // The family is named by the common prefix of its cells; widths are in the floorplan's unit.
+    let family = &sizing["families"][0];
+    assert_eq!(family["id"], "BUFX");
+    let widths: Vec<(&str, i64)> = family["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|cell| {
+            (
+                cell["name"].as_str().unwrap(),
+                cell["width_dbu"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(widths, [("BUFX1", 3360), ("BUFX2", 4200), ("BUFX4", 5880)]);
+    // Everything that does not name the PDK, the unit or the changed inputs is the IHP run's.
+    let expected: Value = serde_json::from_str(
+        &fs::read_to_string(run.fix.join("expected/profiles/delay.json")).unwrap(),
+    )
+    .unwrap();
+    for key in ["schema", "representative", "selection", "excluded"] {
+        assert_eq!(delay[key], expected[key], "{key}");
+    }
+    assert_eq!(
+        delay["buffers"][0]["delay_ns"],
+        expected["buffers"][0]["delay_ns"]
+    );
+    for name in ["cell-policy.json", "cell-buses.json", "io.json", "cts.sdc"] {
+        assert_eq!(
+            fs::read_to_string(run.root.join("frontend/profiles-pdk").join(name)).unwrap(),
+            fs::read_to_string(run.fix.join("expected/profiles").join(name)).unwrap(),
+            "{name}"
+        );
+    }
+
+    // The guards of `frontend-physical` take their values from the contract.
+    let roots = run.path("frontend/bundle-reset/roots.json");
+    run.ok(
+        "frontend-physical",
+        "frontend/physical-pdk",
+        &["--roots", &roots],
+    );
+    for name in ["physical.json", "routing.json"] {
+        assert_eq!(
+            run.normalize(
+                fs::read_to_string(run.root.join("frontend/physical-pdk").join(name))
+                    .unwrap()
+                    .replace("physical-pdk", "physical")
+            ),
+            fs::read_to_string(run.fix.join("expected/physical").join(name)).unwrap(),
+            "{name}"
+        );
+    }
+    type Change = fn(&mut Value);
+    let cases: [(Change, &str); 5] = [
+        (
+            |c| c["physical"]["filler_cells"] = json!(8),
+            "matched decap/tap template differs",
+        ),
+        (
+            |c| c["physical"]["tap"]["body_view"] = json!("lef"),
+            "matched decap/tap template differs",
+        ),
+        (
+            |c| c["physical"]["tap"]["lattices"] = json!([{"max_gap": 15000}]),
+            "matched decap/tap template differs",
+        ),
+        (
+            |c| c["routing"]["max_routing_layer"] = json!("Metal5"),
+            "matched routing layer policy differs",
+        ),
+        (
+            |c| c["schema"] = json!("rusteda.other.v1"),
+            "PDK contract schema",
+        ),
+    ];
+    for (index, (change, message)) in cases.into_iter().enumerate() {
+        let mut other = contract.clone();
+        change(&mut other);
+        bind(&profile(["tt", "ss"]), &other);
+        let workspace = format!("frontend/physical-refused-{index}");
+        assert_eq!(
+            refused("frontend-physical", &workspace, &["--roots", &roots]),
+            message,
+            "case {index}"
+        );
+    }
+    // The pinned Liberty files are those of the profile's corners.
+    bind(&profile(["typ", "slow"]), &contract);
+    assert_eq!(
+        refused("frontend-profiles", "frontend/profiles-typ", &[]),
+        "'std_typ'"
+    );
+    // A profile without its contract is refused.
+    let mut doc: Value = serde_json::from_str(&fs::read_to_string(&context_path).unwrap()).unwrap();
+    doc["files"].as_object_mut().unwrap().remove("contract");
+    fs::write(&context_path, doc.to_string()).unwrap();
+    assert_eq!(
+        refused("frontend-profiles", "frontend/profiles-bare", &[]),
+        "'contract'"
+    );
+}

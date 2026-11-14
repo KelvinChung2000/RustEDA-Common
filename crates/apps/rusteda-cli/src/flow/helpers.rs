@@ -753,27 +753,43 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
     if let Some(cell) = diode.and_then(|d| d.get("cell")).and_then(Json::as_str) {
         wanted.push(cell);
     }
-    let corners = ["tt", "ss"];
-    // The two corner libraries are read beside each other.
-    let (std_tt, std_ss) = (c.file("std_tt")?, c.file("std_ss")?);
-    let (lib_tt, lib_ss) = std::thread::scope(|scope| {
-        let ss = scope.spawn(|| Library::read(&std_ss, Some(&wanted)));
-        let tt = Library::read(&std_tt, Some(&wanted));
-        (
-            tt,
-            ss.join()
-                .unwrap_or_else(|_| Err(Failure::new("INTERNAL", "Liberty reader"))),
-        )
+    let profile = &c.profile;
+    let corners: Vec<&str> = profile.corners.iter().map(String::as_str).collect();
+    // The cell library of every corner (`std_<corner>`), read beside each other.
+    let mut std_libs: Vec<PathBuf> = Vec::new();
+    for co in &corners {
+        std_libs.push(c.file(&format!("std_{co}"))?);
+    }
+    let read: Vec<Res<Library>> = std::thread::scope(|scope| {
+        let others: Vec<_> = std_libs[1..]
+            .iter()
+            .map(|path| scope.spawn(|| Library::read(path, Some(&wanted))))
+            .collect();
+        let mut out = vec![Library::read(&std_libs[0], Some(&wanted))];
+        for other in others {
+            out.push(
+                other
+                    .join()
+                    .unwrap_or_else(|_| Err(Failure::new("INTERNAL", "Liberty reader"))),
+            );
+        }
+        out
     });
-    let libs = [("tt", lib_tt?), ("ss", lib_ss?)];
+    let mut libs: Vec<(&str, Library)> = Vec::new();
+    for (co, lib) in corners.iter().zip(read) {
+        libs.push((co, lib?));
+    }
     let std_lef = c.file("std_lef")?;
     let macros = lef_macros(&read_text(&std_lef)?)?;
     let macro_of = |n: &str| macros.iter().find(|(k, _)| k == n).map(|(_, m)| m);
-    // lef_widths(std_lef, 1000) of the sizing profile builder.
+    // The database unit of the run is the floorplan's.
+    let floorplan = read_json(&c.file("floorplan")?, 1 << 20)?;
+    let dbu_per_um = units_per_micron(&floorplan)?;
+    // lef_widths(std_lef, dbu_per_um) of the sizing profile builder.
     let mut widths: HashMap<&str, i64> = HashMap::default();
     for (name, m) in &macros {
         if let (Some((w, _)), Some(written)) = (m.size_um, &m.width_text) {
-            let width = w * 1000.0;
+            let width = w * dbu_per_um as f64;
             if (width - width.round_ties_even()).abs() > 1e-6 {
                 return Err(Failure::new(
                     "INPUT",
@@ -793,10 +809,14 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
             .map(|m| m.pins.iter().filter(|(_, v)| v.usage == "SIGNAL").collect())
             .unwrap_or_default();
         let only = (signal.len() == 1 && signal[0].0 == pin).then(|| &signal[0].1);
-        let ok = m.is_some_and(|m| m.cls.as_deref() == Some("CORE ANTENNACELL"))
-            && only.is_some_and(|p| {
-                p.direction.as_deref() == Some("INPUT") && p.diff_area_um2.is_some_and(|a| a != 0.0)
-            });
+        // LEF keywords are case-insensitive (`CLASS core ANTENNACELL` is the same class).
+        let ok = m.is_some_and(|m| {
+            m.cls
+                .as_deref()
+                .is_some_and(|cls| cls.eq_ignore_ascii_case("CORE ANTENNACELL"))
+        }) && only.is_some_and(|p| {
+            p.direction.as_deref() == Some("INPUT") && p.diff_area_um2.is_some_and(|a| a != 0.0)
+        });
         need(ok, "port diode is not a single-input LEF antenna cell")?;
         for (co, lib) in &libs {
             let cell = lib.cell(n);
@@ -833,12 +853,15 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
             ("policy_class", Json::str("physical_only")),
         ]));
     }
-    let sources = Json::List(vec![
-        with_role("liberty_tt", c.rec(&c.file("std_tt")?)?),
-        with_role("liberty_ss", c.rec(&c.file("std_ss")?)?),
-        with_role("cell_lef", c.rec(&c.file("cell_lef")?)?),
-        with_role("original_cell_lef", c.rec(&std_lef)?),
-    ]);
+    let mut sources = Vec::new();
+    for (co, path) in corners.iter().zip(&std_libs) {
+        sources.push(with_role(&format!("liberty_{co}"), c.rec(path)?));
+    }
+    sources.push(with_role("cell_lef", c.rec(&c.file("cell_lef")?)?));
+    sources.push(with_role("original_cell_lef", c.rec(&std_lef)?));
+    let sources = Json::List(sources);
+    // The corners as the labels name them: `TT/SS`.
+    let corner_label = profile.corner_label();
     let corner_list = Json::List(corners.iter().map(|c| Json::str(*c)).collect());
     let policy = obj(vec![
         ("allowed", Json::List(names.iter().map(Json::str).collect())),
@@ -884,7 +907,7 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
             ("function", field(reference, "function")),
             (
                 "function_check",
-                Json::str("identity in original TT/SS Liberty"),
+                Json::Str(format!("identity in original {corner_label} Liberty")),
             ),
             ("timing_sense", Json::str("positive_unate")),
             ("area_um2", field(reference, "area_um2")),
@@ -930,8 +953,8 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
     let policy_record = c.rec(&out.join("cell-policy.json"))?;
     let delay = obj(vec![
         ("schema", Json::str("rustroad.delay-cells.v1")),
-        ("pdk", Json::str("ihp-sg13g2")),
-        ("library", Json::str("ez130_8t")),
+        ("pdk", Json::str(&profile.pdk)),
+        ("library", Json::str(&profile.library)),
         ("generator", generator.clone()),
         ("sources", sources.clone()),
         (
@@ -943,18 +966,19 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
         ),
         (
             "corners",
-            Json::List(vec![
-                obj(vec![
-                    ("name", Json::str("tt")),
-                    ("liberty", Json::Str(stem(&std_tt))),
-                    ("rc", Json::str("nom")),
-                ]),
-                obj(vec![
-                    ("name", Json::str("ss")),
-                    ("liberty", Json::Str(stem(&std_ss))),
-                    ("rc", Json::str("nom")),
-                ]),
-            ]),
+            Json::List(
+                corners
+                    .iter()
+                    .zip(&std_libs)
+                    .map(|(co, path)| {
+                        obj(vec![
+                            ("name", Json::str(*co)),
+                            ("liberty", Json::Str(stem(path))),
+                            ("rc", Json::str("nom")),
+                        ])
+                    })
+                    .collect(),
+            ),
         ),
         (
             "representative",
@@ -988,8 +1012,9 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
             .then_with(|| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
             .then_with(|| a.2.cmp(&b.2))
     });
+    let member_names: Vec<&str> = members.iter().map(|m| m.2.as_str()).collect();
     let mut family = vec![
-        ("id", Json::str("BUFX")),
+        ("id", Json::Str(profile.family_id(&member_names))),
         ("order", Json::str("max_capacitance_pf then area_um2")),
     ];
     family.extend(signature.unwrap_or_default());
@@ -999,14 +1024,16 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
     ));
     let sizing = obj(vec![
         ("schema", Json::str("rustroad.sizing-profile.v1")),
-        ("pdk", Json::str("ihp-sg13g2")),
-        ("library", Json::str("ez130_8t")),
+        ("pdk", Json::str(&profile.pdk)),
+        ("library", Json::str(&profile.library)),
         ("generator", generator),
         ("sources", sources),
-        ("dbu_per_um", Json::Int(1000)),
+        ("dbu_per_um", Json::Int(dbu_per_um.into())),
         (
             "rule",
-            Json::str("original TT/SS identity functions and original LEF geometry"),
+            Json::Str(format!(
+                "original {corner_label} identity functions and original LEF geometry"
+            )),
         ),
         (
             "drive_model",
@@ -1024,7 +1051,6 @@ fn profiles(c: &Context, out: &Path) -> Res<()> {
     ]);
     write_json(&out.join("sizing.json"), &sizing)?;
     let interfaces = read_json(&c.file("interfaces")?, 1 << 20)?;
-    let floorplan = read_json(&c.file("floorplan")?, 1 << 20)?;
     let buses = at(&interfaces, "cell_buses")?;
     need(
         buses.py_eq(at(&floorplan, "pin_buses")?),
@@ -1155,41 +1181,33 @@ fn physical(c: &Context, roots_path: &Path, out: &Path) -> Res<()> {
             clock.set("root_net", root_net);
         }
     }
-    // Only lattices with out-of-flow LU.a/LU.b evidence on this floorplan: the legacy aligned
-    // 15 um, the 28.98 um stagger, and the 42 um stagger with unpaired n-well edge
-    // densification. No in-flow step checks LU.a.
+    // Only the tap lattices, filler list length and tap body view that the run's PDK profile
+    // states as qualified (its contract; the IHP recipe's are `Profile::ihp`).
+    let guards = &c.profile.guards;
     let tap = at(&data, "tap")?;
     let max_gap = at(tap, "max_gap")?;
     let pattern = tap.get("pattern").unwrap_or(&Json::Null);
-    let staggered = |phase: i128, unpaired: Option<&str>| {
-        let mut items = vec![
-            ("kind", Json::str("staggered")),
-            ("phase", Json::Int(phase)),
-        ];
-        if let Some(u) = unpaired {
-            items.push(("unpaired", Json::str(u)));
-        }
-        obj(items)
+    // The IHP recipe states the body view; elsewhere an absent one is RustROAD's default.
+    let body_view = match tap.get("body_view") {
+        Some(view) => view.as_str(),
+        None if c.profile.family.is_none() => Some("lef"),
+        None => return Err(key_error("body_view")),
     };
-    let lattices = [
-        (Json::Int(15000), Json::Null),
-        (Json::Int(28980), staggered(14490, None)),
-        (Json::Int(42000), staggered(21000, Some("cell_top"))),
-    ];
     need(
-        list(&data, "filler_cells")?.len() == 9
-            && lattices
+        list(&data, "filler_cells")?.len() == guards.filler_cells
+            && guards
+                .lattices
                 .iter()
                 .any(|(gap, p)| gap.py_eq(max_gap) && p.py_eq(pattern))
-            && at(tap, "body_view")?.as_str() == Some("gds"),
+            && body_view == Some(guards.body_view.as_str()),
         "matched decap/tap template differs",
     )?;
     write_json(&out.join("physical.json"), &data)?;
     let mut routing = read_json(&c.file("routing")?, 1 << 20)?;
     let layers = at(&routing, "track_router")?;
     need(
-        at(layers, "min_routing_layer")?.as_str() == Some("Metal2")
-            && at(layers, "max_routing_layer")?.as_str() == Some("TopMetal2"),
+        at(layers, "min_routing_layer")?.as_str() == Some(guards.routing_layers.0.as_str())
+            && at(layers, "max_routing_layer")?.as_str() == Some(guards.routing_layers.1.as_str()),
         "matched routing layer policy differs",
     )?;
     let capture = routing_capture(&mut routing, &c.root)?;
@@ -1227,11 +1245,23 @@ fn floor_div(a: i64, b: i64) -> i64 {
     a.div_euclid(b)
 }
 
-/// `macro_sizes(lef)`: MACRO -> (width, height) in DBU of 1/1000 um.
-fn macro_sizes(lef: &Path) -> Res<HashMap<String, (i64, i64)>> {
+/// `units_per_micron` of the floorplan: the database unit of the run (1 to 100,000 per micron).
+fn units_per_micron(floorplan: &Json) -> Res<i64> {
+    let units = int_of(floorplan, "units_per_micron")?;
+    need(
+        (1..=100_000).contains(&units),
+        "floorplan units_per_micron out of range",
+    )?;
+    Ok(units)
+}
+
+/// `macro_sizes(lef)`: MACRO -> (width, height) in database units (`dbu_per_um` per micron).
+fn macro_sizes(lef: &Path, dbu_per_um: i64) -> Res<HashMap<String, (i64, i64)>> {
     let mut sizes = HashMap::default();
     let mut name: Option<String> = None;
-    let dbu = |t: &str| -> Res<i64> { Ok((liberty::float(t)? * 1000.0).round_ties_even() as i64) };
+    let dbu = |t: &str| -> Res<i64> {
+        Ok((liberty::float(t)? * dbu_per_um as f64).round_ties_even() as i64)
+    };
     for line in read_text(lef)?.split('\n') {
         let t = tokens(line);
         if t.len() >= 2 && t[0] == "MACRO" {
@@ -1342,14 +1372,15 @@ fn pins(c: &Context, def: &Path, out: &Path) -> Res<()> {
         "physical config already plans its pins",
     )?;
     let cell_lef = c.file("cell_lef")?;
-    let sizes = macro_sizes(&cell_lef)?;
+    let floorplan_path = c.file("floorplan")?;
+    let floor = read_json(&floorplan_path, 1 << 20)?;
+    // The placed DEF is in the floorplan's database unit.
+    let sizes = macro_sizes(&cell_lef, units_per_micron(&floor)?)?;
     let diode = c
         .selection()?
         .get("port_diode")
         .and_then(|d| d.get("cell"))
         .and_then(Json::as_str);
-    let floorplan_path = c.file("floorplan")?;
-    let floor = read_json(&floorplan_path, 1 << 20)?;
     let (die, core) = (at(&floor, "die_area")?, at(&floor, "core_area")?);
     need(
         int_of(die, "lx")? == 0 && int_of(die, "ly")? == 0,
@@ -1644,7 +1675,7 @@ fn validate(c: &Context, out: &Path) -> Res<()> {
         "final estimate belongs to another placement",
     )?;
     let mut timing = Vec::new();
-    for co in ["tt", "ss"] {
+    for co in c.profile.corners.iter().map(String::as_str) {
         let env = read_json(
             &root.join(format!("logs/fe_final_{co}_drv.stdout")),
             16 << 20,
@@ -1740,4 +1771,36 @@ fn validate(c: &Context, out: &Path) -> Res<()> {
     ]);
     write_json(&out.join("result.json"), &result)?;
     c.digests.check_flow(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::estimate::parse_json;
+
+    /// RCLI-REQ-0029: LEF sizes are read in the floorplan's database unit.
+    #[test]
+    fn macro_sizes_follow_the_database_unit() {
+        let dir = std::env::temp_dir().join(format!("rusteda-helpers-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let lef = dir.join("cells.lef");
+        fs::write(
+            &lef,
+            "MACRO buf_1\n  CLASS core ;\n  SIZE 2.24 BY 3.92 ;\nEND buf_1\n\
+             MACRO ram\n  CLASS BLOCK ;\n  SIZE 431.86 BY 484.88 ;\nEND ram\n",
+        )
+        .unwrap();
+        let at = |dbu: i64| macro_sizes(&lef, dbu).unwrap();
+        assert_eq!(at(1000)["buf_1"], (2240, 3920));
+        assert_eq!(at(2000)["buf_1"], (4480, 7840));
+        assert_eq!(at(2000)["ram"], (863_720, 969_760));
+        let _ = fs::remove_dir_all(&dir);
+        let floorplan =
+            |units: &str| parse_json(&format!("{{\"units_per_micron\": {units}}}")).unwrap();
+        assert_eq!(units_per_micron(&floorplan("2000")).unwrap(), 2000);
+        for bad in ["0", "-1000", "100001", "\"1000\"", "1000.5"] {
+            assert!(units_per_micron(&floorplan(bad)).is_err(), "{bad}");
+        }
+        assert!(units_per_micron(&parse_json("{}").unwrap()).is_err());
+    }
 }

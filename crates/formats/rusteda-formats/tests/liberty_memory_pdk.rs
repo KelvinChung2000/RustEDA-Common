@@ -5,7 +5,9 @@
 
 use std::path::PathBuf;
 
+use rusteda_core::netlist::{Conn, PinDir, PinRef};
 use rusteda_formats::liberty::{Direction, read_file_diags};
+use rusteda_formats::verilog::netlist::read_structural;
 
 fn required_path(name: &str) -> PathBuf {
     PathBuf::from(std::env::var_os(name).unwrap_or_else(|| panic!("missing required {name}")))
@@ -63,6 +65,39 @@ fn original_sram22_corners_and_both_standard_cell_pdks() {
                 .any(|diag| diag.code == "L0114" && diag.message.contains("retention"))
         );
         assert!(diagnostics.iter().all(|diag| !diag.code.starts_with("L02")));
+        let source = "module t(input clk, input rstb, input ce, input we, \
+                      input [3:0] wmask, input [8:0] addr, input [31:0] din, output [31:0] dout);\n\
+                      sram22_512x32m4w8 ram(.clk(clk), .rstb(rstb), .ce(ce), .we(we), \
+                      .wmask(wmask), .addr(addr), .din(din), .dout(dout)); endmodule";
+        let graph = read_structural(source, "macro.v", &|name| {
+            (name == cell.name).then(|| {
+                cell.pins
+                    .iter()
+                    .map(|pin| {
+                        let direction = match pin.direction {
+                            Direction::Input => PinDir::Input,
+                            Direction::Output => PinDir::Output,
+                            _ => panic!("unexpected signal direction: {}", pin.name),
+                        };
+                        (pin.name.clone(), direction)
+                    })
+                    .collect()
+            })
+        })
+        .expect("ordinary bus-connected netlist binds to the unmodified macro library");
+        let instance = graph.find_instance("ram").expect("macro instance");
+        for (bus, width) in [("addr", 9), ("din", 32), ("wmask", 4), ("dout", 32)] {
+            for bit in 0..width {
+                let pin = graph
+                    .find_pin(instance, PinRef::Name(&format!("{bus}[{bit}]")))
+                    .expect("macro bus member");
+                assert_eq!(
+                    graph.pin(pin).unwrap().conn,
+                    Some(Conn::Net(graph.find_net(bus, Some(bit)).unwrap())),
+                    "{corner}: {bus}[{bit}] is connected to the correct top-level bit"
+                );
+            }
+        }
     }
     // Drop each immutable parsed library before loading the next. There is no per-test
     // multi-megabyte clone or parallel library reparse.

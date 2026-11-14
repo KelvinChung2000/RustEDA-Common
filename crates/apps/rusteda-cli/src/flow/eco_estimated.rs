@@ -729,14 +729,6 @@ pub(crate) fn electrical(
         }
         let (wire, mut length) = geo.wire_pf(&here)?;
         let mut load = first_max(info.load, wire + caps(loads.iter())?);
-        if let Some((tree, depth)) = tree {
-            let depth: i64 = depth
-                .parse()
-                .map_err(|_| Failure::new("INPUT", "tree depth out of range"))?;
-            let slot = trees.entry((tree.to_string(), depth)).or_insert(0.0);
-            *slot = first_max(*slot, load);
-            continue;
-        }
         let mut moved: HashSet<String> = HashSet::default();
         let mut added: Vec<Row> = Vec::new();
         for x in loads {
@@ -798,6 +790,17 @@ pub(crate) fn electrical(
             // own limit.
             let limit = d.limit.filter(|l| *l != 0.0).unwrap_or(f64::INFINITY);
             other_slew = other_slew || load > limit * fraction;
+        }
+        // Tree leaves can drive SRAM pins too. Isolate those violating pins
+        // before aggregating the level's resize; keep the conservative load
+        // bound and one planned buffer per pin across the corner reports.
+        if let Some((tree, depth)) = tree {
+            let depth: i64 = depth
+                .parse()
+                .map_err(|_| Failure::new("INPUT", "tree depth out of range"))?;
+            let slot = trees.entry((tree.to_string(), depth)).or_insert(0.0);
+            *slot = first_max(*slot, load);
+            continue;
         }
         if rest.is_empty() || !(info.load > 0.0 || other_slew) {
             continue;

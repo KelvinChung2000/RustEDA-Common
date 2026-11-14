@@ -7,7 +7,7 @@
 8d22aa612c00a83dc7e525a9e20452c14c1cad5d6d9712987309cd7aaf08286b  crates/apps/rusteda-cli/src/export/schema.rs
 ab6d1a246467ad69530cda543725c9cee3c9ec41d2d3d89ae06abba8a39ff3ab  crates/apps/rusteda-cli/src/flow/context.rs
 14c13e4675b3eeb86a80c48e60806fba1034d61eba0466f3c3b0a3cbbba0c629  crates/apps/rusteda-cli/src/flow/eco.rs
-ec79e60330bcd03f8d66680ed3027985af1ac75393c9f64e06075286911c3f1f  crates/apps/rusteda-cli/src/flow/eco_estimated.rs
+bc477940028a9f702f583fdda43f4007e74e299780b3ed386ff9b47cb9c00486  crates/apps/rusteda-cli/src/flow/eco_estimated.rs
 ae65271360db85421fb52cd086ad0839960767e277ea19e46e48244144eaab63  crates/apps/rusteda-cli/src/flow/eco_graph.rs
 b11036b76ea001c3c3510e54e4e603e329efcd06d8b89bfec29bcf7cf29eb52f  crates/apps/rusteda-cli/src/flow/eco_inputs.rs
 5e2dc775bb764e7821fca52643de505f5b0613962a6c3d324003d9f21f9e4450  crates/apps/rusteda-cli/src/flow/helpers.rs
@@ -142,7 +142,7 @@ ea24d796dda29876851e47427d91fb03988edfc7f160baa4cdffe782fc8ccb2c  crates/apps/ru
 75b503c2456e43b9de3665e0d70ea1d4da98f21f985e74d3a5d3e5ef760d3ae1  crates/apps/rusteda-cli/tests/fixtures/flow/run/logs/fe_temporary_cts.stdout
 27b10f94b9d19f9c2ef788c310382460199c5f8e14a195c0e73678d12b65b256  crates/apps/rusteda-cli/tests/fixtures/flow/run/logs/fe_temporary_seed.stdout
 9c7c5e0f7c8f018497f750125e7feee9c3cdfa97d1dd46f3322792c064ce6c8c  crates/apps/rusteda-cli/tests/fixtures/flow/run/step-receipts.json
-e273ccab9fe826c3fc188cbf73286be393d30763511c925829c6410e640ee7c0  crates/apps/rusteda-cli/tests/frontend_flow.rs
+3a4017272cad8703d6941d43a762475a6bea5df2771197a0886a09410d91324e  crates/apps/rusteda-cli/tests/frontend_flow.rs
 7274d8cd0b422035253d061d4b3a8e1c35f0614c2a0eb3ff5e6568cca0c7b01f  crates/apps/rusteda-cli/tests/import_lib_cache.rs
 d9ee3c935b48f4d4efbf18855117cc85dd7db130e20c6b92c01787d1455cede2  crates/apps/rusteda-cli/tests/import_logic.rs
 1f7a933e276981252a213381e9cf665973236af4f50f7a3091bca22cbfbb4a5b  crates/apps/rusteda-cli/tests/import_netlist.rs

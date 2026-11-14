@@ -410,6 +410,158 @@ fn the_commands_write_the_reference_helpers_files_byte_for_byte() {
 }
 
 #[test]
+fn electrical_buffers_a_violating_macro_pin_on_a_fanout_tree_once() {
+    // The existing synthetic run plus one macro input: 24 logical cells, two
+    // corners, fewer than 256 graph rows and <64 MiB including parsed reports.
+    // Both corners report the same pin; it needs one pin buffer while its
+    // fanout-tree level must still receive the usual aggregate sizing.
+    let run = Run::new("macro-fanout");
+    assert!(
+        run.hashed,
+        "xxhsum is required for the macro fanout ECO control"
+    );
+    let leaf = "native_fanout_900_0_0";
+    for name in ["frontend/mini.v", "logs/fe_est_export.stdout"] {
+        let path = run.root.join(name);
+        let text = fs::read_to_string(&path).unwrap().replace("u_o", leaf);
+        fs::write(
+            path,
+            text.replace("endmodule", " RAM8 u_ram (.A_DIN(q_o));\nendmodule"),
+        )
+        .unwrap();
+    }
+    let read = |name: &str| -> Value {
+        serde_json::from_slice(&fs::read(run.root.join(name)).unwrap()).unwrap()
+    };
+    let write = |name: &str, value: &Value| {
+        fs::write(
+            run.root.join(name),
+            serde_json::to_vec_pretty(value).unwrap(),
+        )
+        .unwrap();
+    };
+    let mut graph = read("frontend/mini-graph.json");
+    let cells = graph["modules"]["mini"]["cells"].as_object_mut().unwrap();
+    let driver = cells.remove("u_o").unwrap();
+    cells.insert(leaf.into(), driver);
+    cells.insert(
+        "u_ram".into(),
+        json!({"type":"RAM8", "port_directions":{"A_DIN":"input"},
+               "connections":{"A_DIN":[6]}}),
+    );
+    graph["modules"]["RAM8"] = json!({
+        "attributes":{"blackbox":"1"},
+        "ports":{"A_DIN":{"direction":"input", "bits":[2]}},
+        "cells":{}, "netnames":{}
+    });
+    write("frontend/mini-graph.json", &graph);
+    let def_path = run.root.join("logs/fe_est_def.stdout");
+    let def = fs::read_to_string(&def_path).unwrap().replace("u_o", leaf);
+    fs::write(&def_path, &def).unwrap();
+    let mut estimate = read("frontend/estimate-est/result.json");
+    estimate["inputs"]["def"]["sha256"] = json!(sha256(def.as_bytes()));
+    write("frontend/estimate-est/result.json", &estimate);
+    let mut seed = read("logs/fe_est_seed.stdout");
+    let cells = seed["cells"].as_object_mut().unwrap();
+    let at = cells.remove("u_o").unwrap();
+    cells.insert(leaf.into(), at);
+    cells.insert("u_ram".into(), json!([120000, 60000]));
+    seed["source"]["imported_netlist_sha256"] =
+        json!(sha256(&fs::read(run.root.join("frontend/mini.v")).unwrap()));
+    write("logs/fe_est_seed.stdout", &seed);
+    // Rebind the synthetic compiled-report source after changing the fixture.
+    let hashed = Command::new(&run.xxhsum)
+        .arg("-H3")
+        .arg(run.root.join("logs/fe_est_export.stdout"))
+        .output()
+        .unwrap();
+    assert!(hashed.status.success(), "fixture netlist hash failed");
+    let text = String::from_utf8(hashed.stdout).unwrap();
+    let digest = text
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .strip_prefix("XXH3_")
+        .unwrap();
+    let mut meta = read("frontend/sta-est/revisions/rev0002/meta.json");
+    for source in meta["sources"].as_array_mut().unwrap() {
+        if source["table"] == "netlist" {
+            source["hash"] = json!(format!("xxh3:{digest}"));
+        }
+    }
+    write("frontend/sta-est/revisions/rev0002/meta.json", &meta);
+    for corner in ["tt", "ss"] {
+        let name = format!("logs/fe_est_{corner}_drv.stdout");
+        let mut report = read(&name);
+        report["metrics"]["max_capacitance_violating"] = json!(0);
+        report["metrics"]["max_transition_violating"] = json!(1);
+        let section = &mut report["sections"]["drv"];
+        for key in ["total", "matched", "shown"] {
+            section[key] = json!(1);
+        }
+        section["rows"] = json!([{"pin":"u_ram/A_DIN", "handle":"pin900",
+            "corner":corner, "kind":"max_transition", "net":"q_o",
+            "value":2.0, "limit":1.0, "slack":-1.0, "unit":"ns"}]);
+        write(&name, &report);
+    }
+    // This control isolates signal-pin repair from clock balancing.
+    let mut context = read("frontend/context.json");
+    context["selection"]["electrical"]
+        .as_object_mut()
+        .unwrap()
+        .remove("clock_balance");
+    write("frontend/context.json", &context);
+    run.ok(
+        "eco-round",
+        "frontend/plan-macro-fanout",
+        &[
+            "--operation",
+            "electrical",
+            "--timing-tag",
+            "est",
+            "--source",
+            &run.path("frontend/mini.v"),
+            "--graph",
+            &run.path("frontend/mini-graph.json"),
+            "--timed",
+            &run.path("logs/fe_est_export.stdout"),
+            "--bundle",
+            &run.path("frontend/bundle-macro-fanout"),
+            "--plan-only",
+        ],
+    );
+    let plan = read("frontend/plan-macro-fanout/plan.json");
+    let pin_buffers: Vec<_> = plan["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|op| {
+            op["op"] == "buffer_sinks"
+                && op["sinks"].as_array().is_some_and(|sinks| {
+                    sinks
+                        .iter()
+                        .any(|sink| sink["instance"] == "u_ram" && sink["pin"] == "A_DIN")
+                })
+        })
+        .collect();
+    assert_eq!(
+        pin_buffers.len(),
+        1,
+        "both corner violations need one macro-pin buffer: {plan}"
+    );
+    assert_eq!(pin_buffers[0]["cell"], "BUFX4");
+    let receipt = read("frontend/plan-macro-fanout/receipt.json");
+    assert!(
+        receipt["checked"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["action"] == "resize_level"),
+        "macro pin repair must preserve aggregate tree sizing: {receipt}"
+    );
+}
+
+#[test]
 fn a_used_workspace_and_a_changed_pinned_input_are_refused() {
     let run = Run::new("refused");
     run.ok("frontend-profiles", "frontend/profiles-out", &[]);

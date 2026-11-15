@@ -22,6 +22,11 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: python3 scripts/shared_manifest.py --check
       - run: cargo fmt --all -- --check
+      - name: Install the checksum tool for the macro fanout control
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y xxhash
+          xxhsum --version
       - name: Test shared foundation
         shell: bash
         run: |

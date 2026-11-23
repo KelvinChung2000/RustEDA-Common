@@ -18,7 +18,7 @@ use super::abi::{
 };
 use super::lut::lookup;
 use super::state::{NO_PRED, TimingValues, absent, arr_index, canon, slew_index};
-use super::validate::{check_load, validate_starts};
+use super::validate::{check_arc_values, check_load, validate_starts};
 use super::{PropagationStats, Readback, Request, Scope, TimingPropagationBackend, TimingSession};
 use crate::{BackendKind, ComputeError, Precision};
 
@@ -226,7 +226,7 @@ struct CpuSession<'p> {
     load: Cow<'p, [[f64; 4]]>,
     starts: Cow<'p, StartRows>,
     wires: &'p [WireRec],
-    arc_values: &'p [ArcValues],
+    arc_values: Cow<'p, [ArcValues]>,
     start_row: Vec<u32>,
     /// The level of every node, built for the first cone.
     level_of: Vec<u32>,
@@ -248,7 +248,7 @@ impl<'p> CpuSession<'p> {
             load: Cow::Borrowed(p.load),
             starts: Cow::Borrowed(p.starts),
             wires: p.wires,
-            arc_values: p.arc_values,
+            arc_values: Cow::Borrowed(p.arc_values),
             start_row: start_index(p.graph.nodes(), p.starts),
             level_of: Vec::new(),
             values: TimingValues {
@@ -276,7 +276,7 @@ impl<'p> CpuSession<'p> {
             data: &self.luts.data,
             load: &self.load,
             wires: self.wires,
-            arc_values: self.arc_values,
+            arc_values: &self.arc_values,
             start_row: &self.start_row,
             starts: &self.starts,
             ntags: self.ntags as usize,
@@ -635,6 +635,31 @@ impl TimingSession for CpuSession<'_> {
         diff_starts(&self.starts, starts, self.ntags, &mut self.patched);
         self.start_row = start_index(n, starts);
         self.starts = Cow::Owned(starts.clone());
+        Ok(())
+    }
+
+    fn set_arc_values(&mut self, edits: &[(u32, ArcValues)]) -> Result<(), ComputeError> {
+        if self.arc_values.is_empty() {
+            return Err(ComputeError::Invalid(
+                "the session was opened without prepared arc values".into(),
+            ));
+        }
+        let na = self.arc_values.len();
+        for (k, rec) in edits {
+            if *k as usize >= na {
+                return Err(ComputeError::Invalid(format!(
+                    "arc values of arc {k} of {na}"
+                )));
+            }
+            check_arc_values(*k as usize, rec)?;
+        }
+        let in_ptr = &self.graph.in_ptr;
+        let records = self.arc_values.to_mut();
+        for &(k, rec) in edits {
+            records[k as usize] = rec;
+            let v = in_ptr.partition_point(|&p| p <= k) - 1;
+            self.patched.push(v as u32);
+        }
         Ok(())
     }
 

@@ -82,6 +82,15 @@ CPU backend gives the same results in place. Multi-corner batching and Monte Car
 (corners generalised to scenarios with arc-scale vectors) are where a GPU can pay off end to end;
 they are not planned here.
 
+**CD-9 Patchable prepared arc values (2026-11-23).** Placement and routing loops change the delays
+of a few arcs per move and need the timing of that move at once. With immutable records
+(COMPUTE-REQ-0030) each change meant lowering the problem again and opening a new session, a cost
+in the size of the design. `set_arc_values` (COMPUTE-REQ-0031) replaces records in an open session
+and seeds the next cone with their destinations, so one move evaluates only its forward cone. The records
+stay derived inputs: loads, start rows and arc classes remain frozen in a session with records,
+and the engine that prepared the records also prepares their replacements. The CPU session copies
+the records on the first patch; the CUDA session copies each replaced record to the device.
+
 ## Consequences
 
 - The legacy engine kernels and their launches leave the timing engine when it lowers onto the

@@ -6,8 +6,8 @@
 //! never read a value of their own level.
 
 use super::abi::{
-    CompiledLutBank, FLAG_MASK, LevelizedTimingCsr, NEGATIVE_UNATE, NONE, StartRows, TimingProblem,
-    WireRec,
+    ArcValues, CompiledLutBank, FLAG_MASK, LevelizedTimingCsr, NEGATIVE_UNATE, NONE, StartRows,
+    TimingProblem, WireRec,
 };
 use crate::ComputeError;
 
@@ -75,14 +75,14 @@ impl TimingProblem<'_> {
         validate_starts(self.starts, n, self.ntags)?;
         if !self.arc_values.is_empty() {
             if self.arc_values.len() != g.arcs() {
-                return bad("RC arc value count".into());
+                return bad(format!(
+                    "{} prepared arc values for {} arcs",
+                    self.arc_values.len(),
+                    g.arcs()
+                ));
             }
-            for rec in self.arc_values {
-                if rec.delay.iter().chain(&rec.slew).any(|x| !x.is_finite())
-                    || rec.slew.iter().any(|x| *x < 0.0)
-                {
-                    return bad("invalid RC arc values".into());
-                }
+            for (k, rec) in self.arc_values.iter().enumerate() {
+                check_arc_values(k, rec)?;
             }
         }
 
@@ -255,6 +255,17 @@ pub(crate) fn check_wire(k: usize, w: &WireRec, wire_arc: bool) -> Result<(), Co
     }
     if !wire_arc && !w.is_zero() {
         return bad(format!("wires[{k}] is not zero but its arc is no wire arc"));
+    }
+    Ok(())
+}
+
+/// One prepared arc record: finite, with non-negative transitions (COMPUTE-REQ-0031).
+pub(crate) fn check_arc_values(k: usize, rec: &ArcValues) -> Result<(), ComputeError> {
+    if !rec.delay.iter().chain(&rec.slew).all(|x| x.is_finite()) {
+        return bad(format!("arc_values[{k}] is not finite"));
+    }
+    if rec.slew.iter().any(|&x| x < 0.0) {
+        return bad(format!("arc_values[{k}] has a negative transition"));
     }
     Ok(())
 }

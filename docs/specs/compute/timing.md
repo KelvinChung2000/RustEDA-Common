@@ -252,11 +252,18 @@ selection would give.
 
 ## Prepared nonlinear arcs
 
-**COMPUTE-REQ-0030**: TimingProblem may carry one 128-byte ArcValues per incoming
-arc, with f64 delay/slew indexed (input transition, output transition, bound).
-Prepared values override cell lookup and wire degradation. They are immutable
-snapshots of loads, starts and classes: session patch methods must reject edits
-until the caller re-prepares the model. Validate size, finite values and
-nonnegative transitions. CPU/CUDA use identical data and agree bitwise in f64.
-Include these buffers in host/device budgets; test a three-node case plus
-extracted-engine propagation without enumerating timing paths.
+**COMPUTE-REQ-0031** Prepared arc values. A `TimingProblem` may carry one 128-byte `ArcValues`
+record per incoming arc in CSR order, with `f64` delays and transitions indexed
+`(ti * 2 + to) * 2 + an`. A record replaces the arc's table lookup and its wire record in
+COMPUTE-REQ-0017: `d` and `q` are read from it unchanged. Validation (COMPUTE-REQ-0020) accepts the
+records only when there is one per arc, every value is finite and no transition is negative. The
+records are prepared from the loads, start rows and arc classes, so a session opened with records
+rejects `set_loads`, `set_arc_classes` and `set_starts`. `set_arc_values(arc index, record)`
+replaces records in an open session; it is rejected in a session opened without records, for an
+arc out of range and for a record that fails validation, and then applies none of its edits.
+The destination of every replaced arc joins the next cone (COMPUTE-REQ-0021), so a `Cone` or
+`FromLevel` propagation after `set_arc_values` equals, bit for bit and for any thread count, `All`
+in a fresh session opened on the replaced records; when an arc is replaced more than once, its
+last record holds. CPU and CUDA read identical records and agree bit for bit in `f64`
+(COMPUTE-REQ-0019). The records count in the host and device memory budgets of a session.
+COMPUTE-REQ-0030 is superseded ([legacy.md](legacy.md)).

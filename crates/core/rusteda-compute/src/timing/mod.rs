@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: 2026 RustEDA contributors
 
 //! The timing propagation task (`docs/specs/compute/timing.md`, COMPUTE-REQ-0010 to
-//! COMPUTE-REQ-0029): arrival times per tag, transition times per pin and predecessors,
-//! propagated level by level over a levelized timing graph, reduced with the minimum (early) and
-//! the maximum (late).
+//! COMPUTE-REQ-0029 and COMPUTE-REQ-0031): arrival times per tag, transition times per pin and
+//! predecessors, propagated level by level over a levelized timing graph, reduced with the minimum
+//! (early) and the maximum (late).
 //!
 //! An engine lowers its graph, library tables, start values and tag maps into the interface of
 //! [`abi`] ([`TimingProblem`]), selects a backend with [`timing_backend`] and either calls the
@@ -236,6 +236,10 @@ pub trait TimingSession: Send {
 
     /// Replaces the start rows.
     fn set_starts(&mut self, starts: &StartRows) -> Result<(), ComputeError>;
+
+    /// Replaces prepared arc values: `(index of the arc in CSR order, record)`. Only a session
+    /// opened with prepared arc values takes them (COMPUTE-REQ-0031).
+    fn set_arc_values(&mut self, edits: &[(u32, ArcValues)]) -> Result<(), ComputeError>;
 
     /// Makes `values` the resident values, as if a complete propagation had computed them, for
     /// example values carried over from an earlier analysis before a `Cone` propagation.

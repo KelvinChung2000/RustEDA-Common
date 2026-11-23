@@ -17,10 +17,10 @@ use std::time::Instant;
 use rayon::prelude::*;
 use rusteda_core::job::Ctx;
 
-use super::abi::{InArc, NONE, StartRows, TagMapRec, TimingProblem};
+use super::abi::{ArcValues, InArc, NONE, StartRows, TagMapRec, TimingProblem};
 use super::cpu::diff_starts;
 use super::state::{NO_PRED, TimingValues, canon};
-use super::validate::{check_load, validate_starts};
+use super::validate::{check_arc_values, check_load, validate_starts};
 use super::{PropagationStats, Readback, Request, Scope, TimingPropagationBackend, TimingSession};
 use crate::cuda::{
     CudaFunction, CudaSlice, CudaStream, Device, DeviceRepr, PinnedHostSlice, PushKernelArg,
@@ -880,6 +880,37 @@ impl<R: Real> TimingSession for CudaSession<'_, R> {
         self.d_start_row = upload_slice(&self.stream, &self.start_row_h)?;
         self.d_start_arr = upload_slice(&self.stream, &conv::<R>(&self.starts_h.arr))?;
         self.d_start_slew = upload_slice(&self.stream, &conv::<R>(&self.starts_h.slew))?;
+        self.pending_upload_s += t0.elapsed().as_secs_f64();
+        Ok(())
+    }
+
+    fn set_arc_values(&mut self, edits: &[(u32, ArcValues)]) -> Result<(), ComputeError> {
+        if self.has_arc_values == 0 {
+            return Err(ComputeError::Invalid(
+                "the session was opened without prepared arc values".into(),
+            ));
+        }
+        let na = self.problem.arc_values.len();
+        for (k, rec) in edits {
+            if *k as usize >= na {
+                return Err(ComputeError::Invalid(format!(
+                    "arc values of arc {k} of {na}"
+                )));
+            }
+            check_arc_values(*k as usize, rec)?;
+        }
+        let t0 = Instant::now();
+        let in_ptr = &self.problem.graph.in_ptr;
+        for (k, rec) in edits {
+            let k = *k as usize;
+            let flat: &[f64] = bytemuck::cast_slice(std::slice::from_ref(rec));
+            let mut dst = self.d_arc_values.slice_mut(k * 16..(k + 1) * 16);
+            self.stream
+                .memcpy_htod(&conv::<R>(flat), &mut dst)
+                .map_err(|e| ComputeError::Device(format!("CUDA driver: {e}")))?;
+            let v = in_ptr.partition_point(|&p| p as usize <= k) - 1;
+            self.patched.push(v as u32);
+        }
         self.pending_upload_s += t0.elapsed().as_secs_f64();
         Ok(())
     }

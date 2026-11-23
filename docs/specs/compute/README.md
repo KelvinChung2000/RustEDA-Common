@@ -5,7 +5,9 @@ engines behind task traits, so that no engine depends on a GPU binding. Its spec
 
 - this file: backend kinds and errors shared by every task, GPU runtime selection, the device
   self-test and the CUDA device layer;
-- [timing.md](timing.md): the timing propagation task (COMPUTE-REQ-0010 to COMPUTE-REQ-0029);
+- [timing.md](timing.md): the timing propagation task (COMPUTE-REQ-0010 to COMPUTE-REQ-0029 and
+  COMPUTE-REQ-0031);
+- [legacy.md](legacy.md): superseded requirements of the crate, kept verbatim;
 - [decisions.md](decisions.md): the decision record of the crate.
 
 The backends are:
